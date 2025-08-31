@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Calendar, Sparkles, Camera, MapPin, Share2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import confetti from 'canvas-confetti';
 import bannerImg from '../assets/04.webp';
 import bannerRoundImg from '../assets/19.webp';
 import receptionBannerImg from '../assets/05.webp';
@@ -24,6 +25,7 @@ const HeroSection: React.FC = () => {
   });
 
   const [currentCard, setCurrentCard] = useState(0); // 0 for wedding, 1 for reception
+  const [showConfetti, setShowConfetti] = useState(false);
 
   useEffect(() => {
     const weddingDate = new Date('2025-08-31T10:00:00');
@@ -41,6 +43,12 @@ const HeroSection: React.FC = () => {
           minutes: Math.floor((weddingDifference / 1000 / 60) % 60),
           seconds: Math.floor((weddingDifference / 1000) % 60)
         });
+      } else {
+        // Wedding is complete, show confetti
+        setTimeLeft({ days: 0, hours: 0, minutes: 0, seconds: 0 });
+        if (currentCard === 0) {
+          setShowConfetti(true);
+        }
       }
       
       // Reception countdown
@@ -52,11 +60,59 @@ const HeroSection: React.FC = () => {
           minutes: Math.floor((receptionDifference / 1000 / 60) % 60),
           seconds: Math.floor((receptionDifference / 1000) % 60)
         });
+      } else {
+        // Reception is complete, show confetti
+        setReceptionTimeLeft({ days: 0, hours: 0, minutes: 0, seconds: 0 });
+        if (currentCard === 1) {
+          setShowConfetti(true);
+        }
       }
     }, 1000);
 
     return () => clearInterval(timer);
-  }, []);
+  }, [currentCard]);
+
+  // Auto-hide confetti after 10 seconds
+  useEffect(() => {
+    if (showConfetti) {
+      const timer = setTimeout(() => {
+        setShowConfetti(false);
+      }, 10000);
+      return () => clearTimeout(timer);
+    }
+  }, [showConfetti]);
+
+  // Trigger side cannon confetti when countdown reaches 0
+  useEffect(() => {
+    if (showConfetti) {
+      // Side cannon effect from both sides
+      const duration = 3000;
+      const end = Date.now() + duration;
+
+      const frame = () => {
+        confetti({
+          particleCount: 7,
+          angle: 60,
+          spread: 55,
+          origin: { x: 0, y: 0.8 },
+          colors: ['#fbbf24', '#f59e0b', '#d97706', '#b45309', '#92400e']
+        });
+        confetti({
+          particleCount: 7,
+          angle: 120,
+          spread: 55,
+          origin: { x: 1, y: 0.8 },
+          colors: ['#fbbf24', '#f59e0b', '#d97706', '#b45309', '#92400e']
+        });
+
+        if (Date.now() < end) {
+          requestAnimationFrame(frame);
+        }
+      };
+
+      frame();
+    }
+  }, [showConfetti]);
 
   // Auto-scroll between cards every 5 seconds
   useEffect(() => {
@@ -78,8 +134,7 @@ const HeroSection: React.FC = () => {
   // Share function for WhatsApp
   const shareInvitation = (cardType: string) => {
     let shareText = '';
-    let imageUrl = '';
-    
+
     if (cardType === 'wedding') {
       shareText = `💌 You're Invited! 💌
 We're tying the knot! 💍
@@ -89,7 +144,7 @@ Sunday • 10:00 AM - 11:00 AM
 📍 GURUKRIPA Auditorium, Peruntattil
 
 Check out our wedding invite & watch live photos here:`;
-      imageUrl = bannerImg;
+      
     } else {
       shareText = `💌 You're Invited! 💌
 Join us for our Wedding Reception! 🎉
@@ -99,7 +154,6 @@ Monday • 4:00 PM onwards
 📍 A.H. Palace, Mankara, Palakkad
 
 Check out our wedding invite & watch live photos here:`;
-      imageUrl = receptionBannerImg;
     }
     
     // For mobile devices, try to use native sharing
@@ -133,7 +187,7 @@ Check out our wedding invite & watch live photos here:`;
       timeLeft: timeLeft,
       message: "Until We Say \"I Do\" 💕",
       linkText: "See Live Wedding Photos",
-      linkSubtext: "Coming soon — live wedding photos will appear here.",
+      linkSubtext: "Click to View — live wedding photos will appear here.",
       gradient: "from-amber-900/70 via-orange-900/60 to-yellow-900/70"
     },
     {
