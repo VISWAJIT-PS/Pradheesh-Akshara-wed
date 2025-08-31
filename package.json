@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@types/react-router-dom": "^5.3.3",
+    "caniuse-lite": "^1.0.30001739",
     "canvas-confetti": "^1.9.3",
     "framer-motion": "^12.23.12",
     "lucide-react": "^0.344.0",
