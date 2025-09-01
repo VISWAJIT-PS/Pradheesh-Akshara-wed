@@ -457,7 +457,7 @@ const GoogleDriveGallery: React.FC<GoogleDriveGalleryProps> = ({
         </div>
         
         <div className="flex items-center justify-center space-x-4">
-          <button
+          {/* <button
             onClick={() => {
               setFetchComplete(false);
               fetchGoogleDriveImages();
@@ -467,9 +467,9 @@ const GoogleDriveGallery: React.FC<GoogleDriveGalleryProps> = ({
           >
             <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
             <span>Refresh</span>
-          </button>
+          </button> */}
           
-          <button
+          {/* <button
             onClick={downloadAllImages}
             disabled={loading || images.length === 0}
             className={`inline-flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-emerald-500 to-green-500 text-white rounded-lg hover:brightness-105 transition-all disabled:opacity-50`}
@@ -477,7 +477,7 @@ const GoogleDriveGallery: React.FC<GoogleDriveGalleryProps> = ({
           >
             <DownloadCloud className="h-4 w-4" />
             <span>Download All ({images.length})</span>
-          </button>
+          </button> */}
         </div>
       </div>
 

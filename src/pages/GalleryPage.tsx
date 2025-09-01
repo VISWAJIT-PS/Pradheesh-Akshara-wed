@@ -457,7 +457,7 @@ const ReceptionGallery: React.FC<{ onPhotosAvailable: (hasPhotos: boolean) => vo
         <GoogleDriveGallery
           className=""
           folderId="1W3_aUFcDsB8HRodZ7_dZPDsqQ3zM81sY"
-          title="Loading Live Reception Photos"
+          title="Live Reception Photos"
           description="Beautiful moments from our reception!"
           gradientFrom="emerald-400"
           gradientTo="green-600"
@@ -630,7 +630,7 @@ const NowPhotosGrid: React.FC = () => {
       <GoogleDriveGallery
         className="mb-8"
         folderId="1W3_aUFcDsB8HRodZ7_dZPDsqQ3zM81sY"
-        title="Loading Live Reception Photos"
+        title="Live Reception Photos"
         description="Beautiful moments from our reception ceremony!"
         gradientFrom="emerald-400"
         gradientTo="green-600"
