@@ -567,121 +567,10 @@ const WeddingGalleryWithView: React.FC<{ onPhotosAvailable: (hasPhotos: boolean)
   );
 };
 
-// Wrapper component for Reception Gallery with stable state management
-const ReceptionGallery: React.FC<{ onPhotosAvailable: (hasPhotos: boolean) => void }> = ({ onPhotosAvailable }) => {
-  const [hasPhotos, setHasPhotos] = React.useState<boolean | null>(null);
-  const [loading, setLoading] = React.useState(true);
-  const [retryCount, setRetryCount] = React.useState(0);
-  const [lastRequestTime, setLastRequestTime] = React.useState(0);
-  const [checkComplete, setCheckComplete] = React.useState(false);
-
-  const checkReceptionPhotos = React.useCallback(async (isRetry = false) => {
-    // Prevent multiple simultaneous checks
-    if (checkComplete && !isRetry) return;
-    
-    const now = Date.now();
-    const timeSinceLastRequest = now - lastRequestTime;
-
-    // Throttle requests to avoid 429 errors (minimum 2 seconds between requests)
-    if (!isRetry && timeSinceLastRequest < 2000) {
-      const waitTime = 2000 - timeSinceLastRequest;
-      await new Promise(resolve => setTimeout(resolve, waitTime));
-    }
-
-    try {
-      const API_KEY = 'AIzaSyBNn-27uk3XXKmsj8PtZJwWc7ZBcz-ouRo';
-      const FOLDER_ID = '1W3_aUFcDsB8HRodZ7_dZPDsqQ3zM81sY';
-      let allFiles: any[] = [];
-      let pageToken: string | undefined = undefined;
-
-      do {
-        const fields = 'nextPageToken,files(id,name,webViewLink,webContentLink,thumbnailLink)';
-        const pageParam = pageToken ? `&pageToken=${pageToken}` : '';
-        const url = `https://www.googleapis.com/drive/v3/files?q='${FOLDER_ID}'+in+parents+and+mimeType+contains+'image/'&fields=${fields}&pageSize=100${pageParam}&key=${API_KEY}`;
-
-        const response = await fetch(url);
-        setLastRequestTime(Date.now());
-
-        if (!response.ok) {
-          if (response.status === 403) {
-            throw new Error('Access denied. Please ensure the Google Drive folder is publicly shared.');
-          } else if (response.status === 429) {
-            if (retryCount < 3) {
-              const backoffTime = Math.pow(2, retryCount) * 3000; // Increased backoff
-              console.log(`Rate limited. Retrying reception photos in ${backoffTime}ms...`);
-              await new Promise(resolve => setTimeout(resolve, backoffTime));
-              setRetryCount(prev => prev + 1);
-              continue; // retry current page
-            }
-            throw new Error('API rate limit exceeded. Please try again later.');
-          } else {
-            throw new Error(`Failed to fetch images: ${response.status} ${response.statusText}`);
-          }
-        }
-
-        const data = await response.json();
-        if (data.files && data.files.length > 0) {
-          allFiles.push(...data.files);
-        }
-        pageToken = data.nextPageToken;
-      } while (pageToken);
-
-      const photosAvailable = allFiles.length > 0;
-      setHasPhotos(photosAvailable);
-      setRetryCount(0);
-      setCheckComplete(true);
-      onPhotosAvailable(photosAvailable);
-    } catch (error) {
-      console.error('Error checking reception photos:', error);
-      setHasPhotos(false);
-      setCheckComplete(true);
-      onPhotosAvailable(false);
-    } finally {
-      setLoading(false);
-    }
-  }, [lastRequestTime, retryCount, onPhotosAvailable, checkComplete]);
-
-  React.useEffect(() => {
-    if (!checkComplete) {
-      addToRequestQueue(() => checkReceptionPhotos());
-    }
-  }, [checkReceptionPhotos, checkComplete]);
-
-  // Always render the GoogleDriveGallery, let it handle its own loading/empty states
-  return (
-    <div className="mb-8">
-      {/* Loading state */}
-      {loading && (
-        <div className="p-6 rounded-lg bg-gradient-to-r from-emerald-50 to-green-50 text-center">
-          <div className="animate-pulse">
-            <div className="h-6 bg-emerald-200 rounded w-48 mx-auto mb-2"></div>
-            <div className="h-4 bg-emerald-100 rounded w-64 mx-auto"></div>
-          </div>
-        </div>
-      )}
-      
-      {/* Gallery component - always rendered to prevent flickering */}
-      {!loading && (
-        <GoogleDriveGallery
-          className=""
-          folderId="1W3_aUFcDsB8HRodZ7_dZPDsqQ3zM81sY"
-          title="Live Reception Photos"
-          description="Beautiful moments from our reception!"
-          gradientFrom="emerald-400"
-          gradientTo="green-600"
-          textColor="text-emerald-800"
-        />
-      )}
-    </div>
-  );
-};
-
 // Grid that shows only the "now" photos (01..20) and a per-photo share button
 const NowPhotosGrid: React.FC = () => {
   const [hasWeddingPhotos, setHasWeddingPhotos] = React.useState<boolean | null>(null);
-  const [hasReceptionPhotos, setHasReceptionPhotos] = React.useState<boolean | null>(null);
   const [weddingCheckComplete, setWeddingCheckComplete] = React.useState(false);
-  const [receptionCheckComplete, setReceptionCheckComplete] = React.useState(false);
   const [activeTab, setActiveTab] = React.useState<'reception' | 'wedding' | 'saveTheDate'>('reception');
 
   // load assets via Vite glob
@@ -777,33 +666,33 @@ const NowPhotosGrid: React.FC = () => {
     <div>
       {/* Tab Navigation */}
       <div className="mb-8">
-        <div className="flex justify-center items-center space-x-1 bg-white/30 backdrop-blur-sm rounded-xl p-1 max-w-md mx-auto shadow-lg ">
+        <div className="flex justify-center items-center space-x-2 bg-white/40 backdrop-blur-md rounded-2xl p-2 max-w-lg mx-auto shadow-lg border border-white/20">
           <button
             onClick={() => setActiveTab('reception')}
-            className={`px-6 py-3 rounded-lg font-semibold transition-all duration-300 shadow-emerald-200/50 ${
+            className={`px-8 py-4 rounded-xl font-bold text-lg transition-all duration-300 transform hover:scale-105 active:scale-95 cursor-pointer select-none ${
               activeTab === 'reception'
-                ? 'bg-gradient-to-r from-emerald-400 to-green-600 text-white shadow-lg'
-                : 'text-emerald-700 hover:bg-emerald-50'
+                ? 'bg-gradient-to-r from-emerald-400 to-green-600 text-white shadow-xl shadow-emerald-200/50 border-2 border-emerald-300'
+                : 'text-emerald-700 hover:bg-emerald-100/80 hover:text-emerald-800 hover:shadow-md border-2 border-transparent hover:border-emerald-200'
             }`}
           >
             Reception
           </button>
           <button
             onClick={() => setActiveTab('wedding')}
-            className={`px-6 py-3 rounded-lg font-semibold transition-all duration-300 ${
+            className={`px-8 py-4 rounded-xl font-bold text-lg transition-all duration-300 transform hover:scale-105 active:scale-95 cursor-pointer select-none ${
               activeTab === 'wedding'
-                ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-lg'
-                : 'text-purple-700 hover:bg-purple-50'
+                ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-xl shadow-purple-200/50 border-2 border-purple-300'
+                : 'text-purple-700 hover:bg-purple-100/80 hover:text-purple-800 hover:shadow-md border-2 border-transparent hover:border-purple-200'
             }`}
           >
             Wedding
           </button>
           <button
             onClick={() => setActiveTab('saveTheDate')}
-            className={`px-6 py-3 rounded-lg font-semibold transition-all duration-300 ${
+            className={`px-8 py-4 rounded-xl font-bold text-lg transition-all duration-300 transform hover:scale-105 active:scale-95 cursor-pointer select-none ${
               activeTab === 'saveTheDate'
-                ? 'bg-gradient-to-r from-amber-400 to-orange-500 text-white shadow-lg'
-                : 'text-orange-700 hover:bg-orange-50'
+                ? 'bg-gradient-to-r from-amber-400 to-orange-500 text-white shadow-xl shadow-amber-200/50 border-2 border-amber-300'
+                : 'text-orange-700 hover:bg-orange-100/80 hover:text-orange-800 hover:shadow-md border-2 border-transparent hover:border-orange-200'
             }`}
           >
             Save the Date
@@ -836,10 +725,7 @@ const NowPhotosGrid: React.FC = () => {
         {/* Wedding Tab */}
         {activeTab === 'wedding' && (
           <div>
-            <WeddingGalleryWithView onPhotosAvailable={(hasPhotos) => {
-              setHasWeddingPhotos(hasPhotos);
-              setWeddingCheckComplete(true);
-            }} />
+            <WeddingGalleryWithView onPhotosAvailable={setHasWeddingPhotos} />
           </div>
         )}
 

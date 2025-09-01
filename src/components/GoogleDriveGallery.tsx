@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { Loader2, Image as ImageIcon, AlertCircle, Download, Share2, Eye, X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Loader2, Image as ImageIcon, AlertCircle, Download, Share2, Eye, X, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
 
 // Global cache for Google Drive images to prevent re-fetching on tab switches
 const imageCache = new Map<string, { images: DriveImage[], timestamp: number }>();
@@ -232,7 +232,10 @@ const GoogleDriveGallery: React.FC<GoogleDriveGalleryProps> = ({
     }
     
     // Prevent multiple simultaneous fetches
-    if (fetchComplete && !isRetry && images.length > 0) return;
+    if (loading && !isRetry) {
+      console.log('Already loading, skipping fetch for:', FOLDER_ID);
+      return;
+    }
     
     const timeSinceLastRequest = now - lastRequestTime;
     
@@ -315,13 +318,15 @@ const GoogleDriveGallery: React.FC<GoogleDriveGalleryProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [FOLDER_ID, API_KEY, lastRequestTime, retryCount, fetchComplete, images.length]);
+  }, [FOLDER_ID, API_KEY, lastRequestTime, retryCount, loading]);
 
   // Reset state when folderId changes
   useEffect(() => {
     setFetchComplete(false);
     setError(null);
     setRetryCount(0);
+    setImages([]);
+    setLoading(true);
   }, [folderId]);
 
   useEffect(() => {
@@ -330,17 +335,20 @@ const GoogleDriveGallery: React.FC<GoogleDriveGalleryProps> = ({
     const now = Date.now();
     
     // If we have valid cached data, use it immediately
-    if (cached && (now - cached.timestamp) < CACHE_DURATION) {
+    if (cached && (now - cached.timestamp) < CACHE_DURATION && !fetchComplete) {
       console.log('Loading from cache on mount:', FOLDER_ID);
       setImages(cached.images);
       setFetchComplete(true);
       setLoading(false);
-    } else if (!fetchComplete && !loading) {
-      // Only fetch if we don't have cache and haven't started fetching
+      return;
+    }
+    
+    // Only fetch if we don't have cache and haven't started fetching
+    if (!fetchComplete && !loading) {
       console.log('Fetching fresh data for:', FOLDER_ID);
       fetchGoogleDriveImages();
     }
-  }, [FOLDER_ID, fetchGoogleDriveImages]);
+  }, [FOLDER_ID, fetchGoogleDriveImages, fetchComplete, loading]);
 
   const handleImageLoad = (imageId: string) => {
     setLoadedImages(prev => ({ ...prev, [imageId]: true }));
