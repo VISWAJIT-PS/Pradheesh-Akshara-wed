@@ -777,10 +777,10 @@ const NowPhotosGrid: React.FC = () => {
     <div>
       {/* Tab Navigation */}
       <div className="mb-8">
-        <div className="flex justify-center items-center space-x-1 bg-white/30 backdrop-blur-sm rounded-xl p-1 max-w-md mx-auto">
+        <div className="flex justify-center items-center space-x-1 bg-white/30 backdrop-blur-sm rounded-xl p-1 max-w-md mx-auto shadow-lg ">
           <button
             onClick={() => setActiveTab('reception')}
-            className={`px-6 py-3 rounded-lg font-semibold transition-all duration-300 ${
+            className={`px-6 py-3 rounded-lg font-semibold transition-all duration-300 shadow-emerald-200/50 ${
               activeTab === 'reception'
                 ? 'bg-gradient-to-r from-emerald-400 to-green-600 text-white shadow-lg'
                 : 'text-emerald-700 hover:bg-emerald-50'
