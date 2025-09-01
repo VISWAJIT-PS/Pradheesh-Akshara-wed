@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
 import GoogleDriveGallery from '../components/GoogleDriveGallery';
-import { Share2, DownloadCloud, Eye, X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { DownloadCloud, Eye, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 // Global request queue to prevent simultaneous API calls
@@ -271,7 +271,7 @@ const ImageModal: React.FC<{
 };
 
 // Enhanced Wedding Gallery with View Image functionality
-const WeddingGalleryWithView: React.FC<{ onPhotosAvailable: (hasPhotos: boolean) => void }> = ({ onPhotosAvailable }) => {
+const WeddingGalleryWithView: React.FC = () => {
   const [photos, setPhotos] = React.useState<any[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [selectedImageIndex, setSelectedImageIndex] = React.useState<number | null>(null);
@@ -430,17 +430,14 @@ const WeddingGalleryWithView: React.FC<{ onPhotosAvailable: (hasPhotos: boolean)
         pageToken = data.nextPageToken;
       } while (pageToken);
 
-      const hasPhotos = allFiles.length > 0;
       setPhotos(allFiles);
       setRetryCount(0);
-      onPhotosAvailable(hasPhotos);
     } catch (error) {
       console.error('Error checking wedding photos:', error);
-      onPhotosAvailable(false);
     } finally {
       setLoading(false);
     }
-  }, [lastRequestTime, retryCount, onPhotosAvailable]);
+  }, [lastRequestTime, retryCount]);
 
   React.useEffect(() => {
     addToRequestQueue(() => checkWeddingPhotos());
@@ -569,98 +566,13 @@ const WeddingGalleryWithView: React.FC<{ onPhotosAvailable: (hasPhotos: boolean)
 
 // Grid that shows only the "now" photos (01..20) and a per-photo share button
 const NowPhotosGrid: React.FC = () => {
-  const [hasWeddingPhotos, setHasWeddingPhotos] = React.useState<boolean | null>(null);
-  const [weddingCheckComplete, setWeddingCheckComplete] = React.useState(false);
-  const [activeTab, setActiveTab] = React.useState<'reception' | 'wedding' | 'saveTheDate'>('reception');
+  const [activeTab, setActiveTab] = React.useState<'reception' | 'wedding'>('reception');
 
-  // load assets via Vite glob
-  const assets = import.meta.glob('../assets/*.{jpg,jpeg,png,webp}', { as: 'url', eager: true }) as Record<string, string>;
 
-  const getAsset = (filename: string) => {
-    const entry = Object.entries(assets).find(([path]) => path.endsWith(`/${filename}`));
-    return entry ? entry[1] : '';
-  };
 
-  const nowPhotos = Array.from({ length: 20 }, (_, i) => {
-    const jpg = String(i + 1).padStart(2, '0') + '.jpg';
-    const png = String(i + 1).padStart(2, '0') + '.png';
-    const webp = String(i + 1).padStart(2, '0') + '.webp';
-    return {
-      id: i + 1,
-      src: getAsset(webp) || getAsset(jpg) || getAsset(png) || '',
-      alt: `Recent photo ${i + 1}`,
-    };
-  }).filter(p => p.src);
 
-  // loading state for thumbnails
-  const [loaded, setLoaded] = React.useState<Record<string, boolean>>({});
-  const handleLoad = (src: string) => setLoaded((s) => ({ ...s, [src]: true }));
 
-  // small thumbnails for Wedding and Reception sections
-  const weddingThumbs = ['11.jpg', '12.jpg', '13.jpg'].map((n) => getAsset(n)).filter((s) => !!s) as string[];
-  const receptionThumbs = ['14.jpg', '15.jpg', '16.jpg'].map((n) => getAsset(n)).filter((s) => !!s) as string[];
 
-  // countdown helpers
-  const calcRemaining = (target: Date) => {
-    const total = Math.max(0, target.getTime() - Date.now());
-    const days = Math.floor(total / (1000 * 60 * 60 * 24));
-    const hours = Math.floor((total / (1000 * 60 * 60)) % 24);
-    const minutes = Math.floor((total / (1000 * 60)) % 60);
-    const seconds = Math.floor((total / 1000) % 60);
-    return { days, hours, minutes, seconds };
-  };
-
-  const [weddingLeft, setWeddingLeft] = React.useState(() => calcRemaining(new Date('2025-08-31T10:00:00')));
-  const [receptionLeft, setReceptionLeft] = React.useState(() => calcRemaining(new Date('2025-09-01T19:00:00')));
-
-  React.useEffect(() => {
-    const weddingDate = new Date('2025-08-31T10:00:00');
-    const receptionDate = new Date('2025-09-01T19:00:00');
-    const id = setInterval(() => {
-      setWeddingLeft(calcRemaining(weddingDate));
-      setReceptionLeft(calcRemaining(receptionDate));
-    }, 1000);
-    return () => clearInterval(id);
-  }, []);
-
-  const sharePhoto = async (photoUrl: string) => {
-    try {
-      // feature-detect Web Share API
-      const nav = navigator as Navigator & { share?: (data: { title?: string; text?: string; url?: string }) => Promise<void> };
-      if (typeof nav.share === 'function') {
-        await nav.share({ title: 'Live Wedding Photo', text: 'Check out this photo from our wedding gallery', url: photoUrl });
-        return;
-      }
-
-      // Fallback: copy the absolute URL to clipboard
-      await navigator.clipboard.writeText(photoUrl);
-      // minimal feedback
-      alert('Photo URL copied to clipboard. Share it with your friends!');
-    } catch (err) {
-      console.error('Share failed', err);
-      alert('Unable to share or copy the photo URL.');
-    }
-  };
-
-  const downloadPhoto = async (photoUrl: string, id: number) => {
-    try {
-      const res = await fetch(photoUrl);
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const parts = photoUrl.split('.');
-      const ext = parts[parts.length - 1].split('?')[0] || 'jpg';
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `save-the-date-${String(id).padStart(2, '0')}.${ext}`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      console.error('Download failed', err);
-      alert('Unable to download the photo.');
-    }
-  };
 
   return (
     <div>
@@ -686,16 +598,6 @@ const NowPhotosGrid: React.FC = () => {
             }`}
           >
             Wedding
-          </button>
-          <button
-            onClick={() => setActiveTab('saveTheDate')}
-            className={`px-8 py-4 rounded-xl font-bold text-lg transition-all duration-300 transform hover:scale-105 active:scale-95 cursor-pointer select-none ${
-              activeTab === 'saveTheDate'
-                ? 'bg-gradient-to-r from-amber-400 to-orange-500 text-white shadow-xl shadow-amber-200/50 border-2 border-amber-300'
-                : 'text-orange-700 hover:bg-orange-100/80 hover:text-orange-800 hover:shadow-md border-2 border-transparent hover:border-orange-200'
-            }`}
-          >
-            Save the Date
           </button>
         </div>
       </div>
@@ -725,96 +627,11 @@ const NowPhotosGrid: React.FC = () => {
         {/* Wedding Tab */}
         {activeTab === 'wedding' && (
           <div>
-            <WeddingGalleryWithView onPhotosAvailable={setHasWeddingPhotos} />
+            <WeddingGalleryWithView />
           </div>
         )}
 
-        {/* Save the Date Tab */}
-        {activeTab === 'saveTheDate' && (
-          <div>
-            {/* Save the Date section with Download All and Timer */}
-            <div className="mb-8 text-center">
-              <h3 className="text-2xl md:text-3xl font-bold mb-2 inline-block px-3 py-1 rounded-lg bg-gradient-to-r from-amber-400 to-orange-500 text-white">Save the Date</h3>
-              <p className="text-orange-700 mb-4">These are our Save-the-Date photos — download and share with loved ones.</p>
 
-              {/* Save the Date countdown */}
-              <div className="mb-6">
-                <p className="text-orange-800 font-semibold mb-3">Time until our special day:</p>
-                <div className="flex items-center justify-center space-x-3">
-                  {weddingLeft.days > 0 || weddingLeft.hours > 0 || weddingLeft.minutes > 0 || weddingLeft.seconds > 0 ? (
-                    [{ label: 'Days', value: weddingLeft.days }, { label: 'Hours', value: weddingLeft.hours }, { label: 'Minutes', value: weddingLeft.minutes }, { label: 'Seconds', value: weddingLeft.seconds }].map((it) => (
-                      <div key={it.label} className="bg-white/90 text-orange-800 px-3 py-2 rounded-md shadow-sm">
-                        <div className="font-bold text-lg">{String(it.value).padStart(2, '0')}</div>
-                        <div className="text-xs">{it.label}</div>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="text-orange-800 font-semibold text-lg">
-                      🎉 The Wedding Day is Here! 🎉
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="flex items-center justify-center">
-                <button
-                  onClick={async () => {
-                    // download all photos sequentially
-                    for (const photo of nowPhotos) {
-                      try {
-                        const res = await fetch(photo.src);
-                        const blob = await res.blob();
-                        const url = URL.createObjectURL(blob);
-                        const parts = photo.src.split('.');
-                        const ext = parts[parts.length - 1].split('?')[0] || 'jpg';
-                        const a = document.createElement('a');
-                        a.href = url;
-                        a.download = `save-the-date-${String(photo.id).padStart(2, '0')}.${ext}`;
-                        document.body.appendChild(a);
-                        a.click();
-                        a.remove();
-                        URL.revokeObjectURL(url);
-                      } catch (err) {
-                        console.error('Failed to download', err);
-                      }
-                    }
-                    alert('Downloads started — check your browser\'s downloads.');
-                  }}
-                  className="inline-flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-emerald-500 to-green-500 text-white rounded-full shadow-md hover:brightness-105 transition"
-                >
-                  <DownloadCloud className="h-5 w-5" />
-                  <span>Download All</span>
-                </button>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {nowPhotos.map((photo) => (
-                <div key={photo.id} className="relative rounded-lg overflow-hidden shadow-md">
-                  <img src={photo.src} alt={photo.alt} className="w-full h-44 object-cover" />
-                  <div className="absolute top-2 right-2 flex space-x-2">
-                    <button
-                      onClick={() => sharePhoto(photo.src)}
-                      className="bg-white/80 hover:bg-white px-2 py-1 rounded-full flex items-center space-x-1 text-sm shadow-sm"
-                      aria-label={`Share photo ${photo.id}`}
-                    >
-                      <Share2 className="h-4 w-4 text-gray-700" />
-                      <span className="hidden md:inline">Share</span>
-                    </button>
-                    <button
-                      onClick={() => downloadPhoto(photo.src, photo.id)}
-                      className="bg-white/80 hover:bg-white px-2 py-1 rounded-full flex items-center space-x-1 text-sm shadow-sm"
-                      aria-label={`Download photo ${photo.id}`}
-                    >
-                      <DownloadCloud className="h-4 w-4 text-gray-700" />
-                      <span className="hidden md:inline">Download</span>
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
       </motion.div>
     </div>
   );
