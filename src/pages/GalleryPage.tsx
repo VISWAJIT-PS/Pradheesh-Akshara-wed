@@ -359,20 +359,24 @@ const WeddingGalleryWithView: React.FC<{ onPhotosAvailable: (hasPhotos: boolean)
   );
 };
 
-// Wrapper component for Reception Gallery
+// Wrapper component for Reception Gallery with stable state management
 const ReceptionGallery: React.FC<{ onPhotosAvailable: (hasPhotos: boolean) => void }> = ({ onPhotosAvailable }) => {
-  const [photos, setPhotos] = React.useState<any[]>([]);
+  const [hasPhotos, setHasPhotos] = React.useState<boolean | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [retryCount, setRetryCount] = React.useState(0);
   const [lastRequestTime, setLastRequestTime] = React.useState(0);
+  const [checkComplete, setCheckComplete] = React.useState(false);
 
   const checkReceptionPhotos = React.useCallback(async (isRetry = false) => {
+    // Prevent multiple simultaneous checks
+    if (checkComplete && !isRetry) return;
+    
     const now = Date.now();
     const timeSinceLastRequest = now - lastRequestTime;
 
-    // Throttle requests to avoid 429 errors (minimum 1 second between requests)
-    if (!isRetry && timeSinceLastRequest < 1000) {
-      const waitTime = 1000 - timeSinceLastRequest;
+    // Throttle requests to avoid 429 errors (minimum 2 seconds between requests)
+    if (!isRetry && timeSinceLastRequest < 2000) {
+      const waitTime = 2000 - timeSinceLastRequest;
       await new Promise(resolve => setTimeout(resolve, waitTime));
     }
 
@@ -395,7 +399,7 @@ const ReceptionGallery: React.FC<{ onPhotosAvailable: (hasPhotos: boolean) => vo
             throw new Error('Access denied. Please ensure the Google Drive folder is publicly shared.');
           } else if (response.status === 429) {
             if (retryCount < 3) {
-              const backoffTime = Math.pow(2, retryCount) * 2000;
+              const backoffTime = Math.pow(2, retryCount) * 3000; // Increased backoff
               console.log(`Rate limited. Retrying reception photos in ${backoffTime}ms...`);
               await new Promise(resolve => setTimeout(resolve, backoffTime));
               setRetryCount(prev => prev + 1);
@@ -414,45 +418,53 @@ const ReceptionGallery: React.FC<{ onPhotosAvailable: (hasPhotos: boolean) => vo
         pageToken = data.nextPageToken;
       } while (pageToken);
 
-      const hasPhotos = allFiles.length > 0;
-      setPhotos(allFiles);
+      const photosAvailable = allFiles.length > 0;
+      setHasPhotos(photosAvailable);
       setRetryCount(0);
-      onPhotosAvailable(hasPhotos);
+      setCheckComplete(true);
+      onPhotosAvailable(photosAvailable);
     } catch (error) {
       console.error('Error checking reception photos:', error);
+      setHasPhotos(false);
+      setCheckComplete(true);
       onPhotosAvailable(false);
     } finally {
       setLoading(false);
     }
-  }, [lastRequestTime, retryCount, onPhotosAvailable]);
+  }, [lastRequestTime, retryCount, onPhotosAvailable, checkComplete]);
 
   React.useEffect(() => {
-    addToRequestQueue(() => checkReceptionPhotos());
-  }, [checkReceptionPhotos]);
+    if (!checkComplete) {
+      addToRequestQueue(() => checkReceptionPhotos());
+    }
+  }, [checkReceptionPhotos, checkComplete]);
 
-  if (loading) {
-    return (
-      <div className="mb-8 p-6 rounded-lg bg-gradient-to-r from-emerald-50 to-green-50 text-center">
-        <div className="animate-pulse">
-          <div className="h-6 bg-emerald-200 rounded w-48 mx-auto mb-2"></div>
-          <div className="h-4 bg-emerald-100 rounded w-64 mx-auto"></div>
-        </div>
-      </div>
-    );
-  }
-
-  if (photos.length === 0) return null;
-
+  // Always render the GoogleDriveGallery, let it handle its own loading/empty states
   return (
-    <GoogleDriveGallery
-      className="mb-8"
-      folderId="1W3_aUFcDsB8HRodZ7_dZPDsqQ3zM81sY"
-      title="Live Reception Gallery"
-      description="Beautiful moments from our reception!"
-      gradientFrom="emerald-400"
-      gradientTo="green-600"
-      textColor="text-emerald-800"
-    />
+    <div className="mb-8">
+      {/* Loading state */}
+      {loading && (
+        <div className="p-6 rounded-lg bg-gradient-to-r from-emerald-50 to-green-50 text-center">
+          <div className="animate-pulse">
+            <div className="h-6 bg-emerald-200 rounded w-48 mx-auto mb-2"></div>
+            <div className="h-4 bg-emerald-100 rounded w-64 mx-auto"></div>
+          </div>
+        </div>
+      )}
+      
+      {/* Gallery component - always rendered to prevent flickering */}
+      {!loading && (
+        <GoogleDriveGallery
+          className=""
+          folderId="1W3_aUFcDsB8HRodZ7_dZPDsqQ3zM81sY"
+          title="Live Reception Gallery"
+          description="Beautiful moments from our reception!"
+          gradientFrom="emerald-400"
+          gradientTo="green-600"
+          textColor="text-emerald-800"
+        />
+      )}
+    </div>
   );
 };
 
@@ -460,6 +472,8 @@ const ReceptionGallery: React.FC<{ onPhotosAvailable: (hasPhotos: boolean) => vo
 const NowPhotosGrid: React.FC = () => {
   const [hasWeddingPhotos, setHasWeddingPhotos] = React.useState<boolean | null>(null);
   const [hasReceptionPhotos, setHasReceptionPhotos] = React.useState<boolean | null>(null);
+  const [weddingCheckComplete, setWeddingCheckComplete] = React.useState(false);
+  const [receptionCheckComplete, setReceptionCheckComplete] = React.useState(false);
 
   // load assets via Vite glob
   const assets = import.meta.glob('../assets/*.{jpg,jpeg,png,webp}', { as: 'url', eager: true }) as Record<string, string>;
@@ -552,112 +566,136 @@ const NowPhotosGrid: React.FC = () => {
 
   return (
     <div>
-      {/* Wedding Photos Coming Soon (hide when photos are available, show loading state initially) */}
-      {hasWeddingPhotos === null ? (
-        <motion.div
-          initial={{ opacity: 0, y: 6 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="mb-6 p-6 rounded-lg bg-gradient-to-r from-yellow-50 to-amber-50 text-center border border-dashed border-gray-200"
-        >
+      {/* Wedding Photos Coming Soon (use visibility instead of conditional rendering) */}
+      <motion.div
+        initial={{ opacity: 0, y: 6 }}
+        animate={{ 
+          opacity: hasWeddingPhotos === true ? 0 : 1, 
+          y: hasWeddingPhotos === true ? -20 : 0,
+          height: hasWeddingPhotos === true ? 0 : 'auto'
+        }}
+        transition={{ duration: 0.5 }}
+        className="mb-6 p-6 rounded-lg bg-gradient-to-r from-yellow-50 to-amber-50 text-center border border-dashed border-gray-200 overflow-hidden"
+        style={{ 
+          visibility: hasWeddingPhotos === true ? 'hidden' : 'visible',
+          marginBottom: hasWeddingPhotos === true ? 0 : '1.5rem'
+        }}
+      >
+        {hasWeddingPhotos === null ? (
           <div className="animate-pulse">
             <div className="h-6 bg-yellow-200 rounded w-48 mx-auto mb-2"></div>
             <div className="h-4 bg-yellow-100 rounded w-64 mx-auto"></div>
           </div>
-        </motion.div>
-      ) : hasWeddingPhotos === false ? (
-        <motion.div
-          initial={{ opacity: 0, y: 6 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="mb-6 p-6 rounded-lg bg-gradient-to-r from-yellow-50 to-amber-50 text-center border border-dashed border-gray-200"
-        >
-          <h4 className="text-xl font-semibold mb-2 inline-block px-3 py-1 rounded-lg bg-gradient-to-r from-pink-500 to-rose-500 text-white">Wedding Photos — Coming Soon</h4>
-          <p className="text-rose-700 mt-3">Live uploads and the complete wedding gallery will appear here on the wedding day.</p>
+        ) : (
+          <>
+            <h4 className="text-xl font-semibold mb-2 inline-block px-3 py-1 rounded-lg bg-gradient-to-r from-pink-500 to-rose-500 text-white">Wedding Photos — Coming Soon</h4>
+            <p className="text-rose-700 mt-3">Live uploads and the complete wedding gallery will appear here on the wedding day.</p>
 
-          {/* Wedding countdown */}
-          <div className="mt-4 flex items-center justify-center space-x-3">
-            {weddingLeft.days > 0 || weddingLeft.hours > 0 || weddingLeft.minutes > 0 || weddingLeft.seconds > 0 ? (
-              [{ label: 'Days', value: weddingLeft.days }, { label: 'Hours', value: weddingLeft.hours }, { label: 'Minutes', value: weddingLeft.minutes }, { label: 'Seconds', value: weddingLeft.seconds }].map((it) => (
-                <div key={it.label} className="bg-white/90 text-rose-700 px-3 py-2 rounded-md shadow-sm">
-                  <div className="font-bold text-lg">{String(it.value).padStart(2, '0')}</div>
-                  <div className="text-xs">{it.label}</div>
+            {/* Wedding countdown */}
+            <div className="mt-4 flex items-center justify-center space-x-3">
+              {weddingLeft.days > 0 || weddingLeft.hours > 0 || weddingLeft.minutes > 0 || weddingLeft.seconds > 0 ? (
+                [{ label: 'Days', value: weddingLeft.days }, { label: 'Hours', value: weddingLeft.hours }, { label: 'Minutes', value: weddingLeft.minutes }, { label: 'Seconds', value: weddingLeft.seconds }].map((it) => (
+                  <div key={it.label} className="bg-white/90 text-rose-700 px-3 py-2 rounded-md shadow-sm">
+                    <div className="font-bold text-lg">{String(it.value).padStart(2, '0')}</div>
+                    <div className="text-xs">{it.label}</div>
+                  </div>
+                ))
+              ) : (
+                <div className="text-rose-700 font-semibold text-lg">
+                  🎉 The Wedding Day is Here! 🎉
                 </div>
-              ))
-            ) : (
-              <div className="text-rose-700 font-semibold text-lg">
-                🎉 The Wedding Day is Here! 🎉
-              </div>
-            )}
-          </div>
+              )}
+            </div>
 
-          {/* Wedding thumbnails (loading placeholders) */}
-          <div className="mt-4 flex justify-center space-x-3">
-            {weddingThumbs.map((src) => (
-              <div key={src} className="w-24 h-16 rounded overflow-hidden bg-gray-100 relative">
-                {!loaded[src] && <div className="absolute inset-0 bg-gray-200 animate-pulse" />}
-                <img
-                  src={src}
-                  alt="wedding thumb"
-                  loading="lazy"
-                  onLoad={() => handleLoad(src)}
-                  className={`w-full h-full object-cover transition-opacity duration-300 ${loaded[src] ? 'opacity-100' : 'opacity-0'}`}
-                />
-              </div>
-            ))}
-          </div>
-        </motion.div>
-      ) : null}
+            {/* Wedding thumbnails (loading placeholders) */}
+            <div className="mt-4 flex justify-center space-x-3">
+              {weddingThumbs.map((src) => (
+                <div key={src} className="w-24 h-16 rounded overflow-hidden bg-gray-100 relative">
+                  {!loaded[src] && <div className="absolute inset-0 bg-gray-200 animate-pulse" />}
+                  <img
+                    src={src}
+                    alt="wedding thumb"
+                    loading="lazy"
+                    onLoad={() => handleLoad(src)}
+                    className={`w-full h-full object-cover transition-opacity duration-300 ${loaded[src] ? 'opacity-100' : 'opacity-0'}`}
+                  />
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </motion.div>
 
       {/* Wedding Gallery - shows when photos are available */}
-      <WeddingGalleryWithView onPhotosAvailable={setHasWeddingPhotos} />
+      <WeddingGalleryWithView onPhotosAvailable={(hasPhotos) => {
+        setHasWeddingPhotos(hasPhotos);
+        setWeddingCheckComplete(true);
+      }} />
 
-      {/* Reception section - hide timer when photos are available, show loading state initially */}
-      {hasReceptionPhotos === null ? (
-        <div className="mb-8 text-center p-4 rounded-md bg-white/30">
+      {/* Reception section - use visibility instead of conditional rendering */}
+      <motion.div
+        initial={{ opacity: 0, y: 6 }}
+        animate={{ 
+          opacity: hasReceptionPhotos === true ? 0 : 1,
+          y: hasReceptionPhotos === true ? -20 : 0,
+          height: hasReceptionPhotos === true ? 0 : 'auto'
+        }}
+        transition={{ duration: 0.5 }}
+        className="mb-8 text-center p-4 rounded-md bg-white/30 overflow-hidden"
+        style={{ 
+          visibility: hasReceptionPhotos === true ? 'hidden' : 'visible',
+          marginBottom: hasReceptionPhotos === true ? 0 : '2rem'
+        }}
+      >
+        {hasReceptionPhotos === null ? (
           <div className="animate-pulse">
             <div className="h-6 bg-emerald-200 rounded w-32 mx-auto mb-2"></div>
             <div className="h-4 bg-emerald-100 rounded w-48 mx-auto"></div>
           </div>
-        </div>
-      ) : hasReceptionPhotos === false ? (
-        <div className="mb-8 text-center p-4 rounded-md bg-white/30">
-          <h3 className="text-xl font-semibold mb-2 inline-block px-3 py-1 rounded-md bg-gradient-to-r from-emerald-400 to-green-600 text-white">Reception</h3>
-          <p className="text-emerald-800 text-sm">Live uploads and the reception gallery will appear here during and after the reception.</p>
+        ) : (
+          <>
+            <h3 className="text-xl font-semibold mb-2 inline-block px-3 py-1 rounded-md bg-gradient-to-r from-emerald-400 to-green-600 text-white">Reception</h3>
+            <p className="text-emerald-800 text-sm">Live uploads and the reception gallery will appear here during and after the reception.</p>
 
-          {/* Reception countdown */}
-          <div className="mt-4 flex items-center justify-center space-x-3">
-            {receptionLeft.days > 0 || receptionLeft.hours > 0 || receptionLeft.minutes > 0 || receptionLeft.seconds > 0 ? (
-              [{ label: 'Days', value: receptionLeft.days }, { label: 'Hours', value: receptionLeft.hours }, { label: 'Minutes', value: receptionLeft.minutes }, { label: 'Seconds', value: receptionLeft.seconds }].map((it) => (
-                <div key={it.label} className="bg-white/90 text-emerald-800 px-3 py-2 rounded-md shadow-sm">
-                  <div className="font-bold text-lg">{String(it.value).padStart(2, '0')}</div>
-                  <div className="text-xs">{it.label}</div>
+            {/* Reception countdown */}
+            <div className="mt-4 flex items-center justify-center space-x-3">
+              {receptionLeft.days > 0 || receptionLeft.hours > 0 || receptionLeft.minutes > 0 || receptionLeft.seconds > 0 ? (
+                [{ label: 'Days', value: receptionLeft.days }, { label: 'Hours', value: receptionLeft.hours }, { label: 'Minutes', value: receptionLeft.minutes }, { label: 'Seconds', value: receptionLeft.seconds }].map((it) => (
+                  <div key={it.label} className="bg-white/90 text-emerald-800 px-3 py-2 rounded-md shadow-sm">
+                    <div className="font-bold text-lg">{String(it.value).padStart(2, '0')}</div>
+                    <div className="text-xs">{it.label}</div>
+                  </div>
+                ))
+              ) : (
+                <div className="text-emerald-800 font-semibold text-lg">
+                  🎉 Reception Time is Here! 🎉
                 </div>
-              ))
-            ) : (
-              <div className="text-emerald-800 font-semibold text-lg">
-                🎉 Reception Time is Here! 🎉
-              </div>
-            )}
-          </div>
+              )}
+            </div>
 
-          <div className="mt-4 flex justify-center space-x-3">
-            {receptionThumbs.map((src) => (
-              <div key={src} className="w-24 h-16 rounded overflow-hidden bg-gray-100 relative">
-                {!loaded[src] && <div className="absolute inset-0 bg-gray-200 animate-pulse" />}
-                <img
-                  src={src}
-                  alt="reception thumb"
-                  loading="lazy"
-                  onLoad={() => handleLoad(src)}
-                  className={`w-full h-full object-cover transition-opacity duration-300 ${loaded[src] ? 'opacity-100' : 'opacity-0'}`}
-                />
-              </div>
-            ))}
-          </div>
-        </div>
-      ) : null}
+            <div className="mt-4 flex justify-center space-x-3">
+              {receptionThumbs.map((src) => (
+                <div key={src} className="w-24 h-16 rounded overflow-hidden bg-gray-100 relative">
+                  {!loaded[src] && <div className="absolute inset-0 bg-gray-200 animate-pulse" />}
+                  <img
+                    src={src}
+                    alt="reception thumb"
+                    loading="lazy"
+                    onLoad={() => handleLoad(src)}
+                    className={`w-full h-full object-cover transition-opacity duration-300 ${loaded[src] ? 'opacity-100' : 'opacity-0'}`}
+                  />
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </motion.div>
 
       {/* Reception Gallery - shows when photos are available */}
-      <ReceptionGallery onPhotosAvailable={setHasReceptionPhotos} />
+      <ReceptionGallery onPhotosAvailable={(hasPhotos) => {
+        setHasReceptionPhotos(hasPhotos);
+        setReceptionCheckComplete(true);
+      }} />
 
       {/* Save the Date section with Download All and Timer */}
       <div className="mb-8 text-center">

@@ -37,18 +37,22 @@ const GoogleDriveGallery: React.FC<GoogleDriveGalleryProps> = ({
   const [retryCount, setRetryCount] = useState(0);
   const [lastRequestTime, setLastRequestTime] = useState(0);
   const [openDownloadIndex, setOpenDownloadIndex] = useState<string | null>(null);
+  const [fetchComplete, setFetchComplete] = useState(false);
 
   // Google Drive API configuration
   const API_KEY = 'AIzaSyBNn-27uk3XXKmsj8PtZJwWc7ZBcz-ouRo';
   const FOLDER_ID = folderId;
 
   const fetchGoogleDriveImages = useCallback(async (isRetry = false) => {
+    // Prevent multiple simultaneous fetches
+    if (fetchComplete && !isRetry && images.length === 0) return;
+    
     const now = Date.now();
     const timeSinceLastRequest = now - lastRequestTime;
     
-    // Throttle requests to avoid 429 errors (minimum 1 second between requests)
-    if (!isRetry && timeSinceLastRequest < 1000) {
-      const waitTime = 1000 - timeSinceLastRequest;
+    // Throttle requests to avoid 429 errors (minimum 2 seconds between requests)
+    if (!isRetry && timeSinceLastRequest < 2000) {
+      const waitTime = 2000 - timeSinceLastRequest;
       await new Promise(resolve => setTimeout(resolve, waitTime));
     }
     
@@ -74,7 +78,7 @@ const GoogleDriveGallery: React.FC<GoogleDriveGalleryProps> = ({
           } else if (response.status === 429) {
             // Implement exponential backoff for 429 errors
             if (retryCount < 3) {
-              const backoffTime = Math.pow(2, retryCount) * 2000; // 2s, 4s, 8s
+              const backoffTime = Math.pow(2, retryCount) * 3000; // 3s, 6s, 12s
               console.log(`Rate limited. Retrying in ${backoffTime}ms...`);
               await new Promise(resolve => setTimeout(resolve, backoffTime));
               setRetryCount(prev => prev + 1);
@@ -107,20 +111,25 @@ const GoogleDriveGallery: React.FC<GoogleDriveGalleryProps> = ({
 
         setImages(processedImages);
         setRetryCount(0);
+        setFetchComplete(true);
       } else {
         setImages([]);
+        setFetchComplete(true);
       }
     } catch (err) {
       console.error('Error fetching Google Drive images:', err);
       setError(err instanceof Error ? err.message : 'Failed to load images from Google Drive');
+      setFetchComplete(true);
     } finally {
       setLoading(false);
     }
-  }, [FOLDER_ID, API_KEY, lastRequestTime, retryCount]);
+  }, [FOLDER_ID, API_KEY, lastRequestTime, retryCount, fetchComplete, images.length]);
 
   useEffect(() => {
-    fetchGoogleDriveImages();
-  }, [fetchGoogleDriveImages]);
+    if (!fetchComplete) {
+      fetchGoogleDriveImages();
+    }
+  }, [fetchGoogleDriveImages, fetchComplete]);
 
   const handleImageLoad = (imageId: string) => {
     setLoadedImages(prev => ({ ...prev, [imageId]: true }));
@@ -231,7 +240,10 @@ const GoogleDriveGallery: React.FC<GoogleDriveGalleryProps> = ({
         <h3 className="text-lg font-semibold text-red-700 mb-2">Unable to Load Photos</h3>
         <p className="text-red-600 mb-4">{error}</p>
         <button
-          onClick={() => fetchGoogleDriveImages()}
+          onClick={() => {
+            setFetchComplete(false);
+            fetchGoogleDriveImages();
+          }}
           className="inline-flex items-center space-x-2 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
         >
           <RefreshCw className="h-4 w-4" />
@@ -256,7 +268,10 @@ const GoogleDriveGallery: React.FC<GoogleDriveGalleryProps> = ({
           <p className={`${textColor} mt-2`}>{description} ({images.length} photos)</p>
         </div>
         <button
-          onClick={() => fetchGoogleDriveImages()}
+          onClick={() => {
+            setFetchComplete(false);
+            fetchGoogleDriveImages();
+          }}
           disabled={loading}
           className={`inline-flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-${gradientFrom} to-${gradientTo} text-white rounded-lg hover:brightness-105 transition-all disabled:opacity-50`}
         >
