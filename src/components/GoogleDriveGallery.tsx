@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { Loader2, Image as ImageIcon, RefreshCw, AlertCircle, Download, Share2, Eye, X, ChevronLeft, ChevronRight, DownloadCloud } from 'lucide-react';
+import { Loader2, Image as ImageIcon, AlertCircle, Download, Share2, Eye, X, ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface DriveImage {
   id: string;
@@ -58,19 +58,38 @@ const ImageModal: React.FC<{
   // Download the currently viewed image
   const downloadCurrentImage = async () => {
     try {
-      const imageUrl = currentImage.webContentLink || `https://drive.google.com/uc?export=download&id=${currentImage.id}`;
-      if (!imageUrl) throw new Error('No image URL available');
-
-      const fileName = (currentImage.name || `reception-photo-${selectedIndex + 1}`).replace(/[^a-z0-9._-]/gi, '_');
+      // Try multiple download approaches for better browser compatibility
+      const downloadUrl = `https://drive.google.com/uc?export=download&id=${currentImage.id}`;
+      
+      // Method 1: Direct download with proper filename
+      const fileName = (currentImage.name || `photo-${selectedIndex + 1}`).replace(/[^a-z0-9._-]/gi, '_');
+      
+      // Create download link
       const a = document.createElement('a');
-      a.href = imageUrl;
+      a.href = downloadUrl;
       a.download = fileName;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      
+      // Trigger download
       document.body.appendChild(a);
       a.click();
-      a.remove();
+      document.body.removeChild(a);
+      
+      console.log('Modal download initiated for:', currentImage.name);
+      showToast('Download started! Check your Downloads folder.', 'success');
+      
     } catch (error) {
-      console.error('Download failed:', error);
-      alert('Unable to download the image. Please try again.');
+      console.error('Modal download failed:', error);
+      
+      // Fallback: try direct Google Drive download
+      try {
+        const fallbackUrl = `https://drive.google.com/uc?export=download&id=${currentImage.id}&confirm=t`;
+        window.open(fallbackUrl, '_blank', 'noopener,noreferrer');
+      } catch (fallbackError) {
+        console.error('Modal fallback failed:', fallbackError);
+        alert('Unable to download the image. Please try again.');
+      }
     }
   };
 
@@ -95,7 +114,22 @@ const ImageModal: React.FC<{
       >
         {/* Download Button */}
         <button
-          onClick={downloadCurrentImage}
+          onClick={async () => {
+            try {
+              await downloadCurrentImage();
+              // Provide user feedback
+              const button = document.querySelector('[title="Download Image"]') as HTMLElement;
+              if (button) {
+                const originalClass = button.className;
+                button.className = originalClass + ' bg-green-500/80';
+                setTimeout(() => {
+                  button.className = originalClass;
+                }, 1500);
+              }
+            } catch (error) {
+              console.error('Download failed:', error);
+            }
+          }}
           className="absolute top-2 right-12 md:top-4 md:right-16 z-10 p-2 bg-white/20 backdrop-blur-sm rounded-full text-white hover:bg-white/30 transition-colors"
           title="Download Image"
         >
@@ -281,36 +315,108 @@ const GoogleDriveGallery: React.FC<GoogleDriveGalleryProps> = ({
     return image.webContentLink || `https://drive.google.com/uc?export=view&id=${image.id}`;
   };
 
+  // Simple toast notification function
+  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
+    const toast = document.createElement('div');
+    toast.className = `fixed top-4 right-4 z-50 p-3 rounded-lg shadow-lg text-white transition-all transform translate-x-full ${
+      type === 'success' ? 'bg-green-500' : 
+      type === 'error' ? 'bg-red-500' : 
+      'bg-blue-500'
+    }`;
+    toast.textContent = message;
+    
+    document.body.appendChild(toast);
+    
+    // Animate in
+    setTimeout(() => {
+      toast.style.transform = 'translateX(0)';
+    }, 100);
+    
+    // Remove after 3 seconds
+    setTimeout(() => {
+      toast.style.transform = 'translateX(100%)';
+      setTimeout(() => {
+        if (document.body.contains(toast)) {
+          document.body.removeChild(toast);
+        }
+      }, 300);
+    }, 3000);
+  };
+
   const downloadImage = async (image: DriveImage) => {
     try {
-      // Use the full image URL for download
-      const downloadUrl = getFullImageUrl(image);
-
-      // Try to fetch the file as a blob (better UX than opening in a new tab)
-      const res = await fetch(downloadUrl);
-      if (!res.ok) throw new Error('Download failed');
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = image.name || `wedding-photo-${image.id}.jpg`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-      console.log('Download initiated for:', image.name);
+      // Show immediate feedback to user
+      showToast('Starting download...', 'info');
+      
+      // Try multiple download approaches for better browser compatibility
+      const downloadUrl = `https://drive.google.com/uc?export=download&id=${image.id}`;
+      
+      // Method 1: Try blob download first (works better on mobile and Safari)
+      try {
+        const response = await fetch(`https://drive.google.com/uc?export=view&id=${image.id}`, {
+          mode: 'no-cors'
+        });
+        
+        // Create download link with proper filename and extension
+        const fileName = (image.name || `photo-${image.id}`).replace(/[^a-z0-9._-]/gi, '_');
+        const fileExt = fileName.includes('.') ? '' : '.jpg'; // Add extension if missing
+        
+        const a = document.createElement('a');
+        a.href = downloadUrl;
+        a.download = fileName + fileExt;
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+        
+        // For iOS Safari compatibility
+        if (navigator.userAgent.includes('iPhone') || navigator.userAgent.includes('iPad')) {
+          a.setAttribute('download', fileName + fileExt);
+        }
+        
+        // Trigger download
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        
+        console.log('Download initiated for:', image.name);
+        showToast('Download started! Check your Downloads folder.', 'success');
+        return;
+        
+      } catch (fetchError) {
+        console.log('Fetch method failed, trying direct download:', fetchError);
+      }
+      
+      // Method 2: Direct download URL (fallback)
+      const directUrl = `https://drive.google.com/uc?export=download&id=${image.id}&confirm=t`;
+      const fileName = (image.name || `photo-${image.id}`).replace(/[^a-z0-9._-]/gi, '_');
+      const fileExt = fileName.includes('.') ? '' : '.jpg';
+      
+      // Create temporary link
+      const link = document.createElement('a');
+      link.href = directUrl;
+      link.download = fileName + fileExt;
+      link.target = '_blank';
+      
+      // Add to DOM and click
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      console.log('Direct download initiated for:', image.name);
+      showToast('Download started! Check your Downloads folder.', 'success');
       
     } catch (error) {
       console.error('Error downloading image:', error);
       
-      // Fallback: open the image in a new tab for manual download
+      // Method 3: Open in new tab as final fallback
       try {
         const fallbackUrl = `https://drive.google.com/file/d/${image.id}/view`;
-        window.open(fallbackUrl, '_blank');
-        alert('Download failed. The image has been opened in a new tab. You can download it manually from there.');
+        window.open(fallbackUrl, '_blank', 'noopener,noreferrer');
+        alert('Download failed. The image has been opened in a new tab. You can save it manually from there.');
+        showToast('Opening image in new tab for manual download', 'info');
       } catch (fallbackError) {
-        console.error('Fallback also failed:', fallbackError);
-        alert('Download failed. Please try refreshing the page or contact support.');
+        console.error('All download methods failed:', fallbackError);
+        alert('Download failed. Please try again or check your internet connection.');
+        showToast('Download failed. Please try again.', 'error');
       }
     }
   };
@@ -348,58 +454,6 @@ const GoogleDriveGallery: React.FC<GoogleDriveGalleryProps> = ({
         // Show the URL to user for manual copy
         prompt('Copy this link to share the photo:', shareUrl);
       }
-    }
-  };
-
-  const downloadAllImages = async () => {
-    if (images.length === 0) {
-      alert('No images available to download.');
-      return;
-    }
-
-    try {
-      // Show confirmation dialog
-      const confirmDownload = confirm(`This will download all ${images.length} images. Continue?`);
-      if (!confirmDownload) return;
-
-      let successCount = 0;
-      let failCount = 0;
-
-      // Download each image with a slight delay to avoid overwhelming the browser
-      for (let i = 0; i < images.length; i++) {
-        try {
-          const image = images[i];
-          const downloadUrl = getFullImageUrl(image);
-          
-          // Create download link
-          const a = document.createElement('a');
-          a.href = downloadUrl;
-          a.download = image.name || `photo-${i + 1}.jpg`;
-          document.body.appendChild(a);
-          a.click();
-          a.remove();
-          
-          successCount++;
-          
-          // Add delay between downloads to prevent browser blocking
-          if (i < images.length - 1) {
-            await new Promise(resolve => setTimeout(resolve, 500));
-          }
-        } catch (error) {
-          console.error(`Failed to download image ${i + 1}:`, error);
-          failCount++;
-        }
-      }
-
-      // Show result summary
-      if (failCount === 0) {
-        alert(`Successfully started download for all ${successCount} images! Check your downloads folder.`);
-      } else {
-        alert(`Download started for ${successCount} images. ${failCount} images failed to download.`);
-      }
-    } catch (error) {
-      console.error('Error downloading all images:', error);
-      alert('Failed to start bulk download. Please try downloading images individually.');
     }
   };
 
@@ -447,37 +501,13 @@ const GoogleDriveGallery: React.FC<GoogleDriveGalleryProps> = ({
 
   return (
     <div className={className}>
-      {/* Centered Header with refresh and download all buttons */}
+      {/* Centered Header */}
       <div className="text-center mb-8">
         <div className="mb-4">
           <h3 className={`text-2xl md:text-3xl font-bold mb-2 inline-block px-3 py-1 rounded-lg bg-gradient-to-r from-${gradientFrom} to-${gradientTo} text-white`}>
             {title}
           </h3>
           <p className={`${textColor} mt-2`}>{description} ({images.length} photos)</p>
-        </div>
-        
-        <div className="flex items-center justify-center space-x-4">
-          {/* <button
-            onClick={() => {
-              setFetchComplete(false);
-              fetchGoogleDriveImages();
-            }}
-            disabled={loading}
-            className={`inline-flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-${gradientFrom} to-${gradientTo} text-white rounded-lg hover:brightness-105 transition-all disabled:opacity-50`}
-          >
-            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-            <span>Refresh</span>
-          </button> */}
-          
-          {/* <button
-            onClick={downloadAllImages}
-            disabled={loading || images.length === 0}
-            className={`inline-flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-emerald-500 to-green-500 text-white rounded-lg hover:brightness-105 transition-all disabled:opacity-50`}
-            title={`Download all ${images.length} photos`}
-          >
-            <DownloadCloud className="h-4 w-4" />
-            <span>Download All ({images.length})</span>
-          </button> */}
         </div>
       </div>
 
@@ -541,9 +571,35 @@ const GoogleDriveGallery: React.FC<GoogleDriveGalleryProps> = ({
                   <button
                     onClick={async (e) => {
                       e.stopPropagation();
-                      await downloadImage(image);
+                      const button = e.currentTarget;
+                      const originalText = button.innerHTML;
+                      
+                      // Show downloading feedback
+                      button.innerHTML = '<svg class="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg><span class="text-gray-700 font-medium ml-2">Downloading...</span>';
+                      button.disabled = true;
+                      
+                      try {
+                        await downloadImage(image);
+                        // Show success briefly
+                        button.innerHTML = '<svg class="h-4 w-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg><span class="text-green-600 font-medium ml-2">Downloaded!</span>';
+                        
+                        // Reset after 2 seconds
+                        setTimeout(() => {
+                          button.innerHTML = originalText;
+                          button.disabled = false;
+                        }, 2000);
+                      } catch (error) {
+                        // Show error briefly
+                        button.innerHTML = '<svg class="h-4 w-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg><span class="text-red-600 font-medium ml-2">Try Again</span>';
+                        
+                        // Reset after 3 seconds
+                        setTimeout(() => {
+                          button.innerHTML = originalText;
+                          button.disabled = false;
+                        }, 3000);
+                      }
                     }}
-                    className="bg-white/90 hover:bg-white px-4 py-2 rounded-full flex items-center space-x-2 text-sm shadow-lg"
+                    className="bg-white/90 hover:bg-white px-4 py-2 rounded-full flex items-center space-x-2 text-sm shadow-lg disabled:opacity-70"
                     aria-label={`Download image ${image.name}`}
                   >
                     <Download className="h-4 w-4 text-gray-700" />
