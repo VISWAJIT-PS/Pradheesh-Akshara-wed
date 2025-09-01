@@ -68,30 +68,114 @@ const ImageModal: React.FC<{
     }
   }, [isOpen, selectedIndex]);
 
-  // Download the currently viewed image (prefer webContentLink/fullSrc)
+  // Download the currently viewed image (enhanced version)
   const downloadCurrentImage = async () => {
     try {
-      const imageUrl = currentPhoto.download || currentPhoto.fullSrc || currentPhoto.src;
-      if (!imageUrl) throw new Error('No image URL available');
-
-      // Fetch the image as a blob and create an object URL to force download
-      // const response = await fetch(imageUrl);
-      // if (!response.ok) throw new Error('Failed to fetch image for download');
-      // const blob = await response.blob();
-      // const objectUrl = URL.createObjectURL(blob);
-
+      // Show immediate feedback to user
+      const toastDiv = document.createElement('div');
+      toastDiv.className = 'fixed top-4 right-4 z-50 p-3 rounded-lg shadow-lg text-white bg-blue-500 transition-all transform translate-x-full';
+      toastDiv.textContent = 'Starting download...';
+      document.body.appendChild(toastDiv);
+      setTimeout(() => { toastDiv.style.transform = 'translateX(0)'; }, 100);
+      
+      const currentPhoto = photos[selectedIndex];
+      if (!currentPhoto) throw new Error('No photo selected');
+      
+      // Try multiple download approaches for better browser compatibility
+      const downloadUrl = `https://drive.google.com/uc?export=download&id=${currentPhoto.id}`;
+      
+      // Method 1: Direct download
+      try {
+        const fileName = (currentPhoto.name || `wedding-photo-${selectedIndex + 1}`).replace(/[^a-z0-9._-]/gi, '_');
+        const fileExt = fileName.includes('.') ? '' : '.jpg';
+        
+        const a = document.createElement('a');
+        a.href = downloadUrl;
+        a.download = fileName + fileExt;
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+        
+        // For iOS Safari compatibility
+        if (navigator.userAgent.includes('iPhone') || navigator.userAgent.includes('iPad')) {
+          a.setAttribute('download', fileName + fileExt);
+        }
+        
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        
+        // Success feedback
+        toastDiv.className = toastDiv.className.replace('bg-blue-500', 'bg-green-500');
+        toastDiv.textContent = 'Download started! Check your Downloads folder.';
+        
+        console.log('Modal wedding photo download initiated:', currentPhoto.name);
+        return;
+        
+      } catch (directError) {
+        console.log('Direct modal download failed, trying fallback:', directError);
+      }
+      
+      // Method 2: Fallback
+      const fallbackUrl = `https://drive.google.com/uc?export=download&id=${currentPhoto.id}&confirm=t`;
       const fileName = (currentPhoto.name || `wedding-photo-${selectedIndex + 1}`).replace(/[^a-z0-9._-]/gi, '_');
-      const a = document.createElement('a');
-      a.href = imageUrl;
-      a.download = fileName;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      // revoke the created object url
-      URL.revokeObjectURL(imageUrl);
+      const fileExt = fileName.includes('.') ? '' : '.jpg';
+      
+      const link = document.createElement('a');
+      link.href = fallbackUrl;
+      link.download = fileName + fileExt;
+      link.target = '_blank';
+      
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      // Success feedback
+      toastDiv.className = toastDiv.className.replace('bg-blue-500', 'bg-green-500');
+      toastDiv.textContent = 'Download started! Check your Downloads folder.';
+      
+      console.log('Modal wedding photo fallback download initiated:', currentPhoto.name);
+      
+      // Remove toast after 3 seconds
+      setTimeout(() => {
+        toastDiv.style.transform = 'translateX(100%)';
+        setTimeout(() => {
+          if (document.body.contains(toastDiv)) {
+            document.body.removeChild(toastDiv);
+          }
+        }, 300);
+      }, 3000);
+      
     } catch (error) {
-      console.error('Download failed:', error);
-      alert('Unable to download the image. Please try again.');
+      console.error('Modal wedding photo download failed:', error);
+      
+      // Error feedback
+      const errorToast = document.createElement('div');
+      errorToast.className = 'fixed top-4 right-4 z-50 p-3 rounded-lg shadow-lg text-white bg-red-500 transition-all transform translate-x-full';
+      errorToast.textContent = 'Download failed. Please try again.';
+      document.body.appendChild(errorToast);
+      setTimeout(() => { errorToast.style.transform = 'translateX(0)'; }, 100);
+      
+      // Try opening in new tab
+      try {
+        const currentPhoto = photos[selectedIndex];
+        const fallbackUrl = `https://drive.google.com/file/d/${currentPhoto.id}/view`;
+        window.open(fallbackUrl, '_blank', 'noopener,noreferrer');
+        errorToast.textContent = 'Opening image in new tab for manual download';
+        errorToast.className = errorToast.className.replace('bg-red-500', 'bg-blue-500');
+      } catch (fallbackError) {
+        console.error('All modal wedding photo download methods failed:', fallbackError);
+        alert('Unable to download the image. Please try again.');
+      }
+      
+      // Remove error toast after 3 seconds
+      setTimeout(() => {
+        errorToast.style.transform = 'translateX(100%)';
+        setTimeout(() => {
+          if (document.body.contains(errorToast)) {
+            document.body.removeChild(errorToast);
+          }
+        }, 300);
+      }, 3000);
     }
   };
 
@@ -111,9 +195,24 @@ const ImageModal: React.FC<{
         className="relative max-w-4xl max-h-full"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Close Button */}
+        {/* Download Button */}
         <button
-          onClick={downloadCurrentImage}
+          onClick={async () => {
+            try {
+              await downloadCurrentImage();
+              // Provide user feedback
+              const button = document.querySelector('[title="Download Image"]') as HTMLElement;
+              if (button) {
+                const originalClass = button.className;
+                button.className = originalClass + ' bg-green-500/80';
+                setTimeout(() => {
+                  button.className = originalClass;
+                }, 1500);
+              }
+            } catch (error) {
+              console.error('Modal download failed:', error);
+            }
+          }}
           className="absolute top-2 right-12 md:top-4 md:right-16 z-10 p-2 bg-white/20 backdrop-blur-sm rounded-full text-white hover:bg-white/30 transition-colors"
           title="Download Image"
         >
@@ -178,6 +277,109 @@ const WeddingGalleryWithView: React.FC<{ onPhotosAvailable: (hasPhotos: boolean)
   const [selectedImageIndex, setSelectedImageIndex] = React.useState<number | null>(null);
   const [retryCount, setRetryCount] = React.useState(0);
   const [lastRequestTime, setLastRequestTime] = React.useState(0);
+
+  // Simple toast notification function
+  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
+    const toast = document.createElement('div');
+    toast.className = `fixed top-4 right-4 z-50 p-3 rounded-lg shadow-lg text-white transition-all transform translate-x-full ${
+      type === 'success' ? 'bg-green-500' : 
+      type === 'error' ? 'bg-red-500' : 
+      'bg-blue-500'
+    }`;
+    toast.textContent = message;
+    
+    document.body.appendChild(toast);
+    
+    // Animate in
+    setTimeout(() => {
+      toast.style.transform = 'translateX(0)';
+    }, 100);
+    
+    // Remove after 3 seconds
+    setTimeout(() => {
+      toast.style.transform = 'translateX(100%)';
+      setTimeout(() => {
+        if (document.body.contains(toast)) {
+          document.body.removeChild(toast);
+        }
+      }, 300);
+    }, 3000);
+  };
+
+  // Enhanced download function
+  const downloadWeddingImage = async (photo: any, index: number) => {
+    try {
+      // Show immediate feedback to user
+      showToast('Starting download...', 'info');
+      
+      // Try multiple download approaches for better browser compatibility
+      const downloadUrl = `https://drive.google.com/uc?export=download&id=${photo.id}`;
+      
+      // Method 1: Try direct download first (works better on mobile and Safari)
+      try {
+        // Create download link with proper filename and extension
+        const fileName = (photo.name || `wedding-photo-${index + 1}`).replace(/[^a-z0-9._-]/gi, '_');
+        const fileExt = fileName.includes('.') ? '' : '.jpg'; // Add extension if missing
+        
+        const a = document.createElement('a');
+        a.href = downloadUrl;
+        a.download = fileName + fileExt;
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+        
+        // For iOS Safari compatibility
+        if (navigator.userAgent.includes('iPhone') || navigator.userAgent.includes('iPad')) {
+          a.setAttribute('download', fileName + fileExt);
+        }
+        
+        // Trigger download
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        
+        console.log('Wedding photo download initiated for:', photo.name);
+        showToast('Download started! Check your Downloads folder.', 'success');
+        return;
+        
+      } catch (fetchError) {
+        console.log('Direct download failed, trying fallback:', fetchError);
+      }
+      
+      // Method 2: Fallback download URL
+      const fallbackUrl = `https://drive.google.com/uc?export=download&id=${photo.id}&confirm=t`;
+      const fileName = (photo.name || `wedding-photo-${index + 1}`).replace(/[^a-z0-9._-]/gi, '_');
+      const fileExt = fileName.includes('.') ? '' : '.jpg';
+      
+      // Create temporary link
+      const link = document.createElement('a');
+      link.href = fallbackUrl;
+      link.download = fileName + fileExt;
+      link.target = '_blank';
+      
+      // Add to DOM and click
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      console.log('Wedding photo fallback download initiated for:', photo.name);
+      showToast('Download started! Check your Downloads folder.', 'success');
+      
+    } catch (error) {
+      console.error('Error downloading wedding image:', error);
+      
+      // Method 3: Open in new tab as final fallback
+      try {
+        const fallbackUrl = `https://drive.google.com/file/d/${photo.id}/view`;
+        window.open(fallbackUrl, '_blank', 'noopener,noreferrer');
+        alert('Download failed. The image has been opened in a new tab. You can save it manually from there.');
+        showToast('Opening image in new tab for manual download', 'info');
+      } catch (fallbackError) {
+        console.error('All wedding photo download methods failed:', fallbackError);
+        alert('Download failed. Please try again or check your internet connection.');
+        showToast('Download failed. Please try again.', 'error');
+      }
+    }
+  };
 
   const checkWeddingPhotos = React.useCallback(async (isRetry = false) => {
     const now = Date.now();
@@ -313,29 +515,35 @@ const WeddingGalleryWithView: React.FC<{ onPhotosAvailable: (hasPhotos: boolean)
                   <button
                     onClick={async (e) => {
                       e.stopPropagation();
+                      const button = e.currentTarget;
+                      const originalText = button.innerHTML;
+                      
+                      // Show downloading feedback
+                      button.innerHTML = '<svg class="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg><span class="text-gray-700 font-medium ml-2">Downloading...</span>';
+                      button.disabled = true;
+                      
                       try {
-                        const p = photos[index];
-                        const imageUrl = p.webContentLink || p.download || p.fullSrc || `https://drive.google.com/uc?export=download&id=${p.id}` || p.src;
-                        if (!imageUrl) throw new Error('No download URL');
-
-                        // const res = await fetch(imageUrl);
-                        // if (!res.ok) throw new Error('Failed to fetch image');
-                        // const blob = await res.blob();
-                        // const objectUrl = URL.createObjectURL(blob);
-                        const fileName = (p.name || `wedding-photo-${index + 1}`).replace(/[^a-z0-9._-]/gi, '_');
-                        const a = document.createElement('a');
-                        a.href = imageUrl;
-                        a.download = fileName;
-                        document.body.appendChild(a);
-                        a.click();
-                        a.remove();
-                        URL.revokeObjectURL(imageUrl);
+                        await downloadWeddingImage(photos[index], index);
+                        // Show success briefly
+                        button.innerHTML = '<svg class="h-4 w-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg><span class="text-green-600 font-medium ml-2">Downloaded!</span>';
+                        
+                        // Reset after 2 seconds
+                        setTimeout(() => {
+                          button.innerHTML = originalText;
+                          button.disabled = false;
+                        }, 2000);
                       } catch (error) {
-                        console.error('Download failed:', error);
-                        alert('Unable to download the image. Please try again.');
+                        // Show error briefly
+                        button.innerHTML = '<svg class="h-4 w-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg><span class="text-red-600 font-medium ml-2">Try Again</span>';
+                        
+                        // Reset after 3 seconds
+                        setTimeout(() => {
+                          button.innerHTML = originalText;
+                          button.disabled = false;
+                        }, 3000);
                       }
                     }}
-                    className="bg-white/90 hover:bg-white px-4 py-2 rounded-full flex items-center space-x-2 text-sm shadow-lg"
+                    className="bg-white/90 hover:bg-white px-4 py-2 rounded-full flex items-center space-x-2 text-sm shadow-lg disabled:opacity-70"
                     aria-label={`Download image ${photo.alt}`}
                   >
                     <DownloadCloud className="h-4 w-4 text-gray-700" />
