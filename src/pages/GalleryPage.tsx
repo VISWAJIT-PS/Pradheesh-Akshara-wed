@@ -457,7 +457,7 @@ const ReceptionGallery: React.FC<{ onPhotosAvailable: (hasPhotos: boolean) => vo
         <GoogleDriveGallery
           className=""
           folderId="1W3_aUFcDsB8HRodZ7_dZPDsqQ3zM81sY"
-          title="Live Reception Gallery"
+          title="Loading Live Reception Photos"
           description="Beautiful moments from our reception!"
           gradientFrom="emerald-400"
           gradientTo="green-600"
@@ -625,6 +625,17 @@ const NowPhotosGrid: React.FC = () => {
           </>
         )}
       </motion.div>
+
+      {/* Reception Gallery - shows when photos are available */}
+      <GoogleDriveGallery
+        className="mb-8"
+        folderId="1W3_aUFcDsB8HRodZ7_dZPDsqQ3zM81sY"
+        title="Loading Live Reception Photos"
+        description="Beautiful moments from our reception ceremony!"
+        gradientFrom="emerald-400"
+        gradientTo="green-600"
+        textColor="text-emerald-800"
+      />
 
       {/* Wedding Gallery - shows when photos are available */}
       <WeddingGalleryWithView onPhotosAvailable={(hasPhotos) => {

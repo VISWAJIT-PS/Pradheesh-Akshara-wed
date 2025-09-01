@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { Loader2, Image as ImageIcon, RefreshCw, AlertCircle, Download, Share2 } from 'lucide-react';
+import { Loader2, Image as ImageIcon, RefreshCw, AlertCircle, Download, Share2, Eye, X, ChevronLeft, ChevronRight, DownloadCloud } from 'lucide-react';
 
 interface DriveImage {
   id: string;
@@ -21,6 +21,141 @@ interface GoogleDriveGalleryProps {
   textColor: string;
 }
 
+// Enhanced Image Modal Component with Gallery Navigation
+const ImageModal: React.FC<{
+  isOpen: boolean;
+  onClose: () => void;
+  images: DriveImage[];
+  selectedIndex: number;
+  onNavigate: (index: number) => void;
+}> = ({ isOpen, onClose, images, selectedIndex, onNavigate }) => {
+  if (!isOpen || selectedIndex === null || !images[selectedIndex]) return null;
+
+  const currentImage = images[selectedIndex];
+
+  const nextImage = () => {
+    onNavigate((selectedIndex + 1) % images.length);
+  };
+
+  const prevImage = () => {
+    onNavigate(selectedIndex === 0 ? images.length - 1 : selectedIndex - 1);
+  };
+
+  // Keyboard navigation
+  React.useEffect(() => {
+    const handleKeyPress = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowRight') nextImage();
+      if (e.key === 'ArrowLeft') prevImage();
+      if (e.key === 'Escape') onClose();
+    };
+
+    if (isOpen) {
+      document.addEventListener('keydown', handleKeyPress);
+      return () => document.removeEventListener('keydown', handleKeyPress);
+    }
+  }, [isOpen, selectedIndex]);
+
+  // Download the currently viewed image
+  const downloadCurrentImage = async () => {
+    try {
+      const imageUrl = currentImage.webContentLink || `https://drive.google.com/uc?export=download&id=${currentImage.id}`;
+      if (!imageUrl) throw new Error('No image URL available');
+
+      const fileName = (currentImage.name || `reception-photo-${selectedIndex + 1}`).replace(/[^a-z0-9._-]/gi, '_');
+      const a = document.createElement('a');
+      a.href = imageUrl;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } catch (error) {
+      console.error('Download failed:', error);
+      alert('Unable to download the image. Please try again.');
+    }
+  };
+
+  const getFullImageUrl = (image: DriveImage) => {
+    return image.webContentLink || `https://drive.google.com/uc?export=view&id=${image.id}`;
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 bg-black/90 backdrop-blur-sm flex items-center justify-center p-2 md:p-4"
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ scale: 0.9, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.9, opacity: 0 }}
+        className="relative max-w-4xl max-h-full"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Download Button */}
+        <button
+          onClick={downloadCurrentImage}
+          className="absolute top-2 right-12 md:top-4 md:right-16 z-10 p-2 bg-white/20 backdrop-blur-sm rounded-full text-white hover:bg-white/30 transition-colors"
+          title="Download Image"
+        >
+          <Download className="h-6 w-6" />
+        </button>
+        
+        {/* Close Button */}
+        <button
+          onClick={onClose}
+          className="absolute top-2 right-2 md:top-4 md:right-4 z-10 p-2 bg-white/20 backdrop-blur-sm rounded-full text-white hover:bg-white/30 transition-colors"
+        >
+          <X className="h-6 w-6" />
+        </button>
+
+        {/* Navigation Buttons */}
+        {images.length > 1 && (
+          <>
+            <button
+              onClick={prevImage}
+              className="absolute left-2 md:left-4 top-1/2 -translate-y-1/2 z-10 p-2 bg-white/20 backdrop-blur-sm rounded-full text-white hover:bg-white/30 transition-colors"
+            >
+              <ChevronLeft className="h-8 w-8" />
+            </button>
+
+            <button
+              onClick={nextImage}
+              className="absolute right-2 md:right-4 top-1/2 -translate-y-1/2 z-10 p-2 bg-white/20 backdrop-blur-sm rounded-full text-white hover:bg-white/30 transition-colors"
+            >
+              <ChevronRight className="h-8 w-8" />
+            </button>
+          </>
+        )}
+
+        {/* Image Container */}
+        <div className="rounded-xl md:rounded-2xl overflow-hidden max-h-[80vh] max-w-full">
+          <img
+            src={getFullImageUrl(currentImage)}
+            alt={currentImage.name}
+            className="w-full h-full object-contain"
+            onError={(e) => {
+              // Fallback to thumbnail if full image fails
+              const target = e.target as HTMLImageElement;
+              const thumbnailUrl = currentImage.thumbnailLink || `https://drive.google.com/thumbnail?id=${currentImage.id}&sz=w1000`;
+              if (target.src !== thumbnailUrl) {
+                target.src = thumbnailUrl;
+              }
+            }}
+          />
+        </div>
+
+        {/* Photo Info */}
+        <div className="absolute bottom-4 left-4 right-4 bg-black/50 backdrop-blur-sm rounded-lg p-3 text-white text-center">
+          <p className="text-sm md:text-base font-medium">{currentImage.name}</p>
+          <p className="text-xs text-gray-300 mt-1">{selectedIndex + 1} of {images.length}</p>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+};
+
 const GoogleDriveGallery: React.FC<GoogleDriveGalleryProps> = ({ 
   className = '', 
   folderId, 
@@ -38,6 +173,7 @@ const GoogleDriveGallery: React.FC<GoogleDriveGalleryProps> = ({
   const [lastRequestTime, setLastRequestTime] = useState(0);
   const [openDownloadIndex, setOpenDownloadIndex] = useState<string | null>(null);
   const [fetchComplete, setFetchComplete] = useState(false);
+  const [selectedImageIndex, setSelectedImageIndex] = useState<number | null>(null);
 
   // Google Drive API configuration
   const API_KEY = 'AIzaSyBNn-27uk3XXKmsj8PtZJwWc7ZBcz-ouRo';
@@ -215,6 +351,58 @@ const GoogleDriveGallery: React.FC<GoogleDriveGalleryProps> = ({
     }
   };
 
+  const downloadAllImages = async () => {
+    if (images.length === 0) {
+      alert('No images available to download.');
+      return;
+    }
+
+    try {
+      // Show confirmation dialog
+      const confirmDownload = confirm(`This will download all ${images.length} images. Continue?`);
+      if (!confirmDownload) return;
+
+      let successCount = 0;
+      let failCount = 0;
+
+      // Download each image with a slight delay to avoid overwhelming the browser
+      for (let i = 0; i < images.length; i++) {
+        try {
+          const image = images[i];
+          const downloadUrl = getFullImageUrl(image);
+          
+          // Create download link
+          const a = document.createElement('a');
+          a.href = downloadUrl;
+          a.download = image.name || `photo-${i + 1}.jpg`;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          
+          successCount++;
+          
+          // Add delay between downloads to prevent browser blocking
+          if (i < images.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 500));
+          }
+        } catch (error) {
+          console.error(`Failed to download image ${i + 1}:`, error);
+          failCount++;
+        }
+      }
+
+      // Show result summary
+      if (failCount === 0) {
+        alert(`Successfully started download for all ${successCount} images! Check your downloads folder.`);
+      } else {
+        alert(`Download started for ${successCount} images. ${failCount} images failed to download.`);
+      }
+    } catch (error) {
+      console.error('Error downloading all images:', error);
+      alert('Failed to start bulk download. Please try downloading images individually.');
+    }
+  };
+
   if (loading) {
     return (
       <motion.div
@@ -223,8 +411,8 @@ const GoogleDriveGallery: React.FC<GoogleDriveGalleryProps> = ({
         className={`bg-white/60 rounded-lg p-8 text-center ${className}`}
       >
         <Loader2 className="h-8 w-8 text-pink-500 animate-spin mx-auto mb-4" />
-        <h3 className="text-lg font-semibold text-gray-700 mb-2">Loading Live Wedding Photos</h3>
-        <p className="text-gray-600">Fetching the latest photos from our wedding...</p>
+        <h3 className="text-lg font-semibold text-gray-700 mb-2">{title}</h3>
+        <p className="text-gray-600">{description}</p>
       </motion.div>
     );
   }
@@ -259,7 +447,7 @@ const GoogleDriveGallery: React.FC<GoogleDriveGalleryProps> = ({
 
   return (
     <div className={className}>
-      {/* Centered Header with refresh button */}
+      {/* Centered Header with refresh and download all buttons */}
       <div className="text-center mb-8">
         <div className="mb-4">
           <h3 className={`text-2xl md:text-3xl font-bold mb-2 inline-block px-3 py-1 rounded-lg bg-gradient-to-r from-${gradientFrom} to-${gradientTo} text-white`}>
@@ -267,17 +455,30 @@ const GoogleDriveGallery: React.FC<GoogleDriveGalleryProps> = ({
           </h3>
           <p className={`${textColor} mt-2`}>{description} ({images.length} photos)</p>
         </div>
-        <button
-          onClick={() => {
-            setFetchComplete(false);
-            fetchGoogleDriveImages();
-          }}
-          disabled={loading}
-          className={`inline-flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-${gradientFrom} to-${gradientTo} text-white rounded-lg hover:brightness-105 transition-all disabled:opacity-50`}
-        >
-          <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-          <span>Refresh</span>
-        </button>
+        
+        <div className="flex items-center justify-center space-x-4">
+          <button
+            onClick={() => {
+              setFetchComplete(false);
+              fetchGoogleDriveImages();
+            }}
+            disabled={loading}
+            className={`inline-flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-${gradientFrom} to-${gradientTo} text-white rounded-lg hover:brightness-105 transition-all disabled:opacity-50`}
+          >
+            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+            <span>Refresh</span>
+          </button>
+          
+          <button
+            onClick={downloadAllImages}
+            disabled={loading || images.length === 0}
+            className={`inline-flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-emerald-500 to-green-500 text-white rounded-lg hover:brightness-105 transition-all disabled:opacity-50`}
+            title={`Download all ${images.length} photos`}
+          >
+            <DownloadCloud className="h-4 w-4" />
+            <span>Download All ({images.length})</span>
+          </button>
+        </div>
       </div>
 
       {/* Image Grid */}
@@ -325,55 +526,42 @@ const GoogleDriveGallery: React.FC<GoogleDriveGalleryProps> = ({
               {/* Hover overlay */}
               <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
               
-              {/* Action buttons overlay */}
-              <div className="absolute top-2 right-2 flex space-x-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                <div className="relative">
+              {/* Action buttons overlay - centered and visible */}
+              <div className="absolute inset-0 flex flex-col gap-3 items-center justify-center p-3 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                <button
+                  onClick={() => setSelectedImageIndex(index)}
+                  className="bg-white/90 hover:bg-white px-4 py-2 rounded-full flex items-center space-x-2 text-sm shadow-lg"
+                  aria-label={`View image ${image.name}`}
+                >
+                  <Eye className="h-4 w-4 text-gray-700" />
+                  <span className="text-gray-700 font-medium">View Image</span>
+                </button>
+
+                <div className="flex space-x-2">
+                  <button
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      await downloadImage(image);
+                    }}
+                    className="bg-white/90 hover:bg-white px-4 py-2 rounded-full flex items-center space-x-2 text-sm shadow-lg"
+                    aria-label={`Download image ${image.name}`}
+                  >
+                    <Download className="h-4 w-4 text-gray-700" />
+                    <span className="text-gray-700 font-medium">Download</span>
+                  </button>
+
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      setOpenDownloadIndex(prev => prev === image.id ? null : image.id);
+                      shareImage(image);
                     }}
-                    className="p-2 bg-white/90 hover:bg-white rounded-full shadow-md transition-colors"
-                    title="Download Options"
+                    className="bg-white/90 hover:bg-white px-4 py-2 rounded-full flex items-center space-x-2 text-sm shadow-lg"
+                    aria-label={`Share image ${image.name}`}
                   >
-                    <Download className="h-4 w-4 text-gray-700" />
+                    <Share2 className="h-4 w-4 text-gray-700" />
+                    <span className="text-gray-700 font-medium">Share</span>
                   </button>
-
-                  {openDownloadIndex === image.id && (
-                    <div
-                      onClick={(e) => e.stopPropagation()}
-                      className="absolute right-0 mt-2 w-44 bg-white rounded-lg shadow-lg z-20 overflow-hidden"
-                    >
-                      <button
-                        onClick={async () => {
-                          setOpenDownloadIndex(null);
-                        }}
-                        className="w-full text-left px-3 py-2 hover:bg-gray-100 border-b"
-                      >
-                        Download original (Drive)
-                      </button>
-                      <button
-                        onClick={async () => {
-                          setOpenDownloadIndex(null);
-                          await downloadImage(image);
-                        }}
-                        className="w-full text-left px-3 py-2 hover:bg-gray-100"
-                      >
-                        Download display image
-                      </button>
-                    </div>
-                  )}
                 </div>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    shareImage(image);
-                  }}
-                  className="p-2 bg-white/90 hover:bg-white rounded-full shadow-md transition-colors"
-                  title="Share Photo"
-                >
-                  <Share2 className="h-4 w-4 text-gray-700" />
-                </button>
               </div>
               
               {/* Image name overlay */}
@@ -386,6 +574,15 @@ const GoogleDriveGallery: React.FC<GoogleDriveGalleryProps> = ({
           </motion.div>
         ))}
       </motion.div>
+
+      {/* Image Modal */}
+      <ImageModal
+        isOpen={selectedImageIndex !== null}
+        onClose={() => setSelectedImageIndex(null)}
+        images={images}
+        selectedIndex={selectedImageIndex || 0}
+        onNavigate={setSelectedImageIndex}
+      />
     </div>
   );
 };
