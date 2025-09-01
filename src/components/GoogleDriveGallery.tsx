@@ -2,6 +2,10 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { Loader2, Image as ImageIcon, AlertCircle, Download, Share2, Eye, X, ChevronLeft, ChevronRight } from 'lucide-react';
 
+// Global cache for Google Drive images to prevent re-fetching on tab switches
+const imageCache = new Map<string, { images: DriveImage[], timestamp: number }>();
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes in milliseconds
+
 interface DriveImage {
   id: string;
   name: string;
@@ -214,10 +218,22 @@ const GoogleDriveGallery: React.FC<GoogleDriveGalleryProps> = ({
   const FOLDER_ID = folderId;
 
   const fetchGoogleDriveImages = useCallback(async (isRetry = false) => {
-    // Prevent multiple simultaneous fetches
-    if (fetchComplete && !isRetry && images.length === 0) return;
-    
+    // Check cache first
+    const cacheKey = `folder-${FOLDER_ID}`;
+    const cached = imageCache.get(cacheKey);
     const now = Date.now();
+    
+    if (cached && (now - cached.timestamp) < CACHE_DURATION && !isRetry) {
+      console.log('Using cached images for folder:', FOLDER_ID);
+      setImages(cached.images);
+      setFetchComplete(true);
+      setLoading(false);
+      return;
+    }
+    
+    // Prevent multiple simultaneous fetches
+    if (fetchComplete && !isRetry && images.length > 0) return;
+    
     const timeSinceLastRequest = now - lastRequestTime;
     
     // Throttle requests to avoid 429 errors (minimum 2 seconds between requests)
@@ -282,9 +298,15 @@ const GoogleDriveGallery: React.FC<GoogleDriveGalleryProps> = ({
         setImages(processedImages);
         setRetryCount(0);
         setFetchComplete(true);
+        
+        // Cache the results
+        imageCache.set(cacheKey, { images: processedImages, timestamp: now });
+        console.log('Cached images for folder:', FOLDER_ID, 'Count:', processedImages.length);
       } else {
         setImages([]);
         setFetchComplete(true);
+        // Cache empty result too
+        imageCache.set(cacheKey, { images: [], timestamp: now });
       }
     } catch (err) {
       console.error('Error fetching Google Drive images:', err);
@@ -295,11 +317,30 @@ const GoogleDriveGallery: React.FC<GoogleDriveGalleryProps> = ({
     }
   }, [FOLDER_ID, API_KEY, lastRequestTime, retryCount, fetchComplete, images.length]);
 
+  // Reset state when folderId changes
   useEffect(() => {
-    if (!fetchComplete) {
+    setFetchComplete(false);
+    setError(null);
+    setRetryCount(0);
+  }, [folderId]);
+
+  useEffect(() => {
+    const cacheKey = `folder-${FOLDER_ID}`;
+    const cached = imageCache.get(cacheKey);
+    const now = Date.now();
+    
+    // If we have valid cached data, use it immediately
+    if (cached && (now - cached.timestamp) < CACHE_DURATION) {
+      console.log('Loading from cache on mount:', FOLDER_ID);
+      setImages(cached.images);
+      setFetchComplete(true);
+      setLoading(false);
+    } else if (!fetchComplete && !loading) {
+      // Only fetch if we don't have cache and haven't started fetching
+      console.log('Fetching fresh data for:', FOLDER_ID);
       fetchGoogleDriveImages();
     }
-  }, [fetchGoogleDriveImages, fetchComplete]);
+  }, [FOLDER_ID, fetchGoogleDriveImages]);
 
   const handleImageLoad = (imageId: string) => {
     setLoadedImages(prev => ({ ...prev, [imageId]: true }));
